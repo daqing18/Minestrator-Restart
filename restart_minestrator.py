@@ -198,14 +198,13 @@ def run_script():
 
         print("✏️ 填写账号密码...")
         try:
-            # 1. 定位账号输入框（利用 type='text'）
             sb.wait_for_element_visible("input[type='text']", timeout=20)
             sb.type("input[type='text']", EMAIL)
+            time.sleep(0.5) # 稍微停顿，给前端框架响应时间
             
-            # 2. 定位密码输入框（利用 type='password'）
             sb.type("input[type='password']", PASSWORD)
+            time.sleep(0.5) # 稍微停顿，给前端框架响应时间
             
-            # 3. 勾选“记住我”
             try:
                 sb.execute_script("var r=document.querySelector('input[type=\"checkbox\"]'); if(r) r.checked=true;")
             except Exception:
@@ -217,14 +216,20 @@ def run_script():
 
         print("📤 提交登录请求...")
         try:
-            sb.find_element("button[type='submit']").click()
-        except Exception:
-            try:
-                sb.click('button:contains("Se connecter")')
-            except Exception:
-                print("❌ 登录按钮不可用")
-                sb.save_screenshot("login_submit_fail.png")
-                return
+            # 第一重保险：直接在密码框内模拟按下回车键 (Enter)，这是最稳定的表单提交方式
+            sb.press_keys("input[type='password']", "\n")
+            time.sleep(1)
+            
+            # 第二重保险：如果回车没生效，用原生 JS 精准寻找并强制点击写着 "Se connecter" 的按钮
+            sb.execute_script("""
+                let btns = Array.from(document.querySelectorAll('button'));
+                let loginBtn = btns.find(b => b.textContent.includes('Se connecter'));
+                if(loginBtn) loginBtn.click();
+            """)
+        except Exception as e:
+            print(f"❌ 登录按钮提交异常: {e}")
+            sb.save_screenshot("login_submit_fail.png")
+            return
 
         print("⏳ 等待登录跳转...")
         for _ in range(40):
