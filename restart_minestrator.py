@@ -199,11 +199,18 @@ def run_script():
         print("✏️ 填写账号密码...")
         try:
             sb.wait_for_element_visible("input[type='text']", timeout=20)
-            sb.type("input[type='text']", EMAIL)
-            time.sleep(0.5) # 稍微停顿，给前端框架响应时间
             
+            # 正常填写内容
+            sb.type("input[type='text']", EMAIL)
             sb.type("input[type='password']", PASSWORD)
-            time.sleep(0.5) # 稍微停顿，给前端框架响应时间
+            
+            # 🔥 关键修复点：强制触发原生 input 事件，唤醒 Vue/React 框架的状态同步
+            sb.execute_script("""
+                var ev = new Event('input', { bubbles: true });
+                document.querySelector("input[type='text']").dispatchEvent(ev);
+                document.querySelector("input[type='password']").dispatchEvent(ev);
+            """)
+            time.sleep(1) # 给前端框架 1 秒钟处理状态
             
             try:
                 sb.execute_script("var r=document.querySelector('input[type=\"checkbox\"]'); if(r) r.checked=true;")
@@ -216,20 +223,24 @@ def run_script():
 
         print("📤 提交登录请求...")
         try:
-            # 第一重保险：直接在密码框内模拟按下回车键 (Enter)，这是最稳定的表单提交方式
-            sb.press_keys("input[type='password']", "\n")
-            time.sleep(1)
-            
-            # 第二重保险：如果回车没生效，用原生 JS 精准寻找并强制点击写着 "Se connecter" 的按钮
-            sb.execute_script("""
-                let btns = Array.from(document.querySelectorAll('button'));
-                let loginBtn = btns.find(b => b.textContent.includes('Se connecter'));
-                if(loginBtn) loginBtn.click();
-            """)
-        except Exception as e:
-            print(f"❌ 登录按钮提交异常: {e}")
-            sb.save_screenshot("login_submit_fail.png")
-            return
+            # 方法一：利用 XPath 文本匹配精确点击（无视元素类型）
+            sb.click('//*[contains(text(), "Se connecter")]', timeout=5)
+        except Exception:
+            try:
+                # 方法二：原生 JS 暴力穿透点击（防元素被透明图层遮挡）
+                sb.execute_script("""
+                    let tags = document.querySelectorAll('*');
+                    for(let t of tags) {
+                        if(t.innerText && t.innerText.trim() === 'Se connecter') {
+                            t.click();
+                            break;
+                        }
+                    }
+                """)
+            except Exception as e:
+                print(f"❌ 登录按钮提交异常: {e}")
+                sb.save_screenshot("login_submit_fail.png")
+                return
 
         print("⏳ 等待登录跳转...")
         for _ in range(40):
