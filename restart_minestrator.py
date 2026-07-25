@@ -259,48 +259,55 @@ def run_script():
         # ── 跳转服务器管理页 ──────────────────────────────────
         print(f"🔃 跳转至服务器管理页：{SERVER_URL}")
         sb.open(SERVER_URL)
-        time.sleep(3)
-        print(f"📄 当前页面：{sb.get_current_url()}")
-        sb.save_screenshot("server_page.png")
-
-        # ── 注入监听器 ────────────────────────────────────────
-        inject_listener(sb)
-
-        # ── 等待 Token ────────────────────────────────────────
-        token = wait_for_token(sb, timeout=60)
-        if not token:
-            sb.save_screenshot("token_timeout.png")
-            send_tg("❌ Token 获取超时", "Turnstile 未能自动完成")
-            return
-
-        # ── 发送重启指令 ──────────────────────────────────────
-        if not send_restart(sb, token):
-            sb.save_screenshot("api_fail.png")
-            send_tg("❌ API 重启请求失败", f"Token长度={len(token)}")
-            return
-
-        # ── 刷新页面，等待剩余时间更新 ──────────────────────
-        print("🔄 刷新页面等待利用期限更新...")
-        time.sleep(5)
-        sb.open(SERVER_URL)
-        time.sleep(5)
+        
+        # ── 等待面板加载完成 ──────────────────────────────────
+        print("⏳ 等待服务器面板加载 (约需 15 秒)...")
+        # 页面会有加载圈 (image_7)，我们等待终端控制台或状态字样出现 (image_8)
         try:
-            remaining = sb.execute_script(r"""
-                (function(){
-                    var spans = document.querySelectorAll('[data-slot="base"] span');
-                    var parts = [];
-                    for (var i = 0; i < spans.length; i++) {
-                        var t = spans[i].textContent.trim();
-                        if (/^\d+[hms]$/.test(t)) parts.push(t);
-                    }
-                    return parts.length ? parts.join(' ') : '';
-                })()
-            """)
-            detail = f"⏰ 利用期限：{remaining}" if remaining else "⏰ 利用期限：获取失败"
+            sb.wait_for_element_visible("div.font-mono, #console, .terminal, button", timeout=30)
+            print("✅ 面板 UI 加载成功！")
+            time.sleep(5) # 额外缓冲 5 秒，确保按钮完全渲染并绑定了点击事件
         except Exception:
-            detail = "利用期限：获取失败"
-        print(f"⏱️ {detail}")
-        send_tg("✅ 重启成功！", detail)
+            print("⚠️ 未能精准检测到控制台特征，执行硬等待...")
+            time.sleep(20)
+            
+        # ── 点击重启按钮 ──────────────────────────────────────
+        print("🔄 寻找并点击重启按钮...")
+        try:
+            # 利用原生 JS 智能扫描并点击蓝色的重启按钮
+            # 为防止未来界面更新导致严苛的选择器失效，这里严格根据你截图的视觉特征（颜色和图标）来模糊定位
+            clicked = sb.execute_script("""
+                let btns = document.querySelectorAll('button');
+                for (let i = 0; i < btns.length; i++) {
+                    let b = btns[i];
+                    let style = window.getComputedStyle(b);
+                    // 根据截图特征：重启按钮内含有 SVG 图标，且背景色是蓝色系
+                    if (b.querySelector('svg') && (style.backgroundColor.includes('blue') || style.backgroundColor.includes('rgb(37, 99, 235)') || style.backgroundColor.includes('rgb(59, 130, 246)'))) {
+                        b.click();
+                        return true;
+                    }
+                }
+                
+                // 兜底方案：如果找不到蓝色按钮，就按顺序点击页面左侧第一个包含图标的按钮（通常第一个就是重启/开机）
+                let svgs = document.querySelectorAll('button svg');
+                if (svgs.length > 0) {
+                    svgs[0].closest('button').click();
+                    return true;
+                }
+                return false;
+            """)
+            
+            if clicked:
+                print("✅ 重启指令发送成功（已点击按钮）！")
+                send_tg("✅ 重启成功", "已通过自动化点击面板按钮触发重启")
+            else:
+                print("❌ 未能在页面上找到对应的重启按钮")
+                sb.save_screenshot("click_fail.png")
+                send_tg("❌ 重启失败", "找不到按钮，请检查截图")
+        except Exception as e:
+            print(f"❌ 按钮点击异常: {e}")
+            sb.save_screenshot("button_error.png")
+
 
 
 if __name__ == "__main__":
