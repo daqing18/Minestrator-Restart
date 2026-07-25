@@ -207,10 +207,7 @@ def run_script():
             
             # 3. 勾选“记住我”
             try:
-                # 既然前端重写了，原本的 #remember 可能也失效了，直接找 checkbox 最稳
-                sb.execute_script(
-                    "var r=document.querySelector('input[type=\"checkbox\"]'); if(r) r.checked=true;"
-                )
+                sb.execute_script("var r=document.querySelector('input[type=\"checkbox\"]'); if(r) r.checked=true;")
             except Exception:
                 pass
         except Exception:
@@ -218,20 +215,16 @@ def run_script():
             sb.save_screenshot("login_fail.png")
             return
 
-
         print("📤 提交登录请求...")
         try:
-            # 尝试直接找 type="submit" 的按钮
             sb.find_element("button[type='submit']").click()
         except Exception:
             try:
-                # 如果没有 submit 属性，直接找包含“Se connecter”文字的按钮
                 sb.click('button:contains("Se connecter")')
-        except Exception:
-            print("❌ 登录按钮不可用")
-            sb.save_screenshot("login_submit_fail.png")
-            return
-
+            except Exception:
+                print("❌ 登录按钮不可用")
+                sb.save_screenshot("login_submit_fail.png")
+                return
 
         print("⏳ 等待登录跳转...")
         for _ in range(40):
