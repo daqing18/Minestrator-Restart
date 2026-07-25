@@ -274,27 +274,26 @@ def run_script():
         # ── 点击重启按钮 ──────────────────────────────────────
         print("🔄 寻找并点击重启按钮...")
         try:
-            # 利用原生 JS 智能扫描并点击蓝色的重启按钮
-            # 为防止未来界面更新导致严苛的选择器失效，这里严格根据你截图的视觉特征（颜色和图标）来模糊定位
+            # 🔥 修复：将 JS 代码包裹在 return (function() { ... })(); 中，解决 Illegal return statement
             clicked = sb.execute_script("""
-                let btns = document.querySelectorAll('button');
-                for (let i = 0; i < btns.length; i++) {
-                    let b = btns[i];
-                    let style = window.getComputedStyle(b);
-                    // 根据截图特征：重启按钮内含有 SVG 图标，且背景色是蓝色系
-                    if (b.querySelector('svg') && (style.backgroundColor.includes('blue') || style.backgroundColor.includes('rgb(37, 99, 235)') || style.backgroundColor.includes('rgb(59, 130, 246)'))) {
-                        b.click();
+                return (function() {
+                    let btns = document.querySelectorAll('button');
+                    for (let i = 0; i < btns.length; i++) {
+                        let b = btns[i];
+                        let style = window.getComputedStyle(b);
+                        if (b.querySelector('svg') && (style.backgroundColor.includes('blue') || style.backgroundColor.includes('rgb(37, 99, 235)') || style.backgroundColor.includes('rgb(59, 130, 246)'))) {
+                            b.click();
+                            return true;
+                        }
+                    }
+                    
+                    let svgs = document.querySelectorAll('button svg');
+                    if (svgs.length > 0) {
+                        svgs[0].closest('button').click();
                         return true;
                     }
-                }
-                
-                // 兜底方案：如果找不到蓝色按钮，就按顺序点击页面左侧第一个包含图标的按钮（通常第一个就是重启/开机）
-                let svgs = document.querySelectorAll('button svg');
-                if (svgs.length > 0) {
-                    svgs[0].closest('button').click();
-                    return true;
-                }
-                return false;
+                    return false;
+                })();
             """)
             
             if clicked:
@@ -307,8 +306,6 @@ def run_script():
         except Exception as e:
             print(f"❌ 按钮点击异常: {e}")
             sb.save_screenshot("button_error.png")
-
-
 
 if __name__ == "__main__":
     run_script()
