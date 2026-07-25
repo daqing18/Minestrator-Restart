@@ -223,24 +223,24 @@ def run_script():
 
         print("📤 提交登录请求...")
         try:
-            # 方法一：利用 XPath 文本匹配精确点击（无视元素类型）
-            sb.click('//*[contains(text(), "Se connecter")]', timeout=5)
-        except Exception:
-            try:
-                # 方法二：原生 JS 暴力穿透点击（防元素被透明图层遮挡）
-                sb.execute_script("""
-                    let tags = document.querySelectorAll('*');
-                    for(let t of tags) {
-                        if(t.innerText && t.innerText.trim() === 'Se connecter') {
-                            t.click();
-                            break;
-                        }
+            # 终极杀招：直接在密码框内模拟按下回车键（Enter），最符合真人习惯，能绕过几乎所有前端按钮失效问题
+            sb.press_keys("input[type='password']", "\n")
+            time.sleep(2) # 稍微多等两秒，给网络请求留出时间
+            
+            # 兜底保险：如果回车没生效，用原生 JS 暴力点击所有带“Se connecter”文字的元素
+            sb.execute_script("""
+                let tags = document.querySelectorAll('*');
+                for(let t of tags) {
+                    if(t.textContent && t.textContent.trim() === 'Se connecter') {
+                        t.click();
+                        break;
                     }
-                """)
-            except Exception as e:
-                print(f"❌ 登录按钮提交异常: {e}")
-                sb.save_screenshot("login_submit_fail.png")
-                return
+                }
+            """)
+        except Exception as e:
+            print(f"❌ 登录按钮提交异常: {e}")
+            sb.save_screenshot("login_submit_fail.png")
+            return
 
         print("⏳ 等待登录跳转...")
         for _ in range(40):
