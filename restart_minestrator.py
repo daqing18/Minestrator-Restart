@@ -271,40 +271,62 @@ def run_script():
             print("⚠️ 未能精准检测到控制台特征，执行硬等待...")
             time.sleep(20)
             
-        # ── 点击重启按钮 ──────────────────────────────────────
-        print("🔄 寻找并点击重启按钮...")
+        # ── 点击重启按钮（真实鼠标点击 + MouseEvent 双重保障） ────────
+        print("🔄 寻找并执行真实物理点击蓝色【重启】按钮...")
         try:
-            # 🔥 终极修复：彻底移除 JS 中的 return 关键字，纯执行点击动作，避开语法引擎检测
-            sb.execute_script("""
-                let btns = document.querySelectorAll('button');
-                let clicked = false;
-                for (let i = 0; i < btns.length; i++) {
-                    let b = btns[i];
-                    let style = window.getComputedStyle(b);
-                    // 匹配蓝色且带有 svg 图标的按钮（也就是截图里的重启按钮）
-                    if (b.querySelector('svg') && (style.backgroundColor.includes('blue') || style.backgroundColor.includes('rgb(37, 99, 235)') || style.backgroundColor.includes('rgb(59, 130, 246)'))) {
-                        b.click();
-                        clicked = true;
-                        break;
+            # 1. 派发完整的 MouseEvent 冒泡事件，强行唤醒 Vue/React 事件监听器
+            js_clicked = sb.execute_script("""
+                return (function() {
+                    let btns = document.querySelectorAll('button');
+                    for (let i = 0; i < btns.length; i++) {
+                        let b = btns[i];
+                        let style = window.getComputedStyle(b);
+                        // 匹配蓝色且带有 svg 的按钮
+                        if (b.querySelector('svg') && (style.backgroundColor.includes('blue') || style.backgroundColor.includes('rgb(37, 99, 235)') || style.backgroundColor.includes('rgb(59, 130, 246)'))) {
+                            // 构造并派发真实的 MouseEvent 冒泡事件
+                            let mouseEvt = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
+                            b.dispatchEvent(mouseEvt);
+                            
+                            // 同时对内部的 svg 也触发一次，双重保险
+                            let svg = b.querySelector('svg');
+                            if (svg) svg.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+                            return true;
+                        }
                     }
-                }
-                
-                // 兜底方案：如果按颜色没找到，就无脑点页面左边第一个带图标的按钮
-                if (!clicked) {
-                    let svgs = document.querySelectorAll('button svg');
-                    if (svgs.length > 0) {
-                        svgs[0].closest('button').click();
-                    }
-                }
+                    return false;
+                })();
             """)
+
+            # 2. 结合 SeleniumBase 原生物理点击 (模拟真实鼠标光标移动 + Hover + 物理按下)
+            try:
+                # 匹配面板上的蓝色按钮或第一个图标按钮
+                button_xpath = "//button[contains(@class,'blue') or contains(@class,'primary') or .//svg][1]"
+                if sb.is_element_visible(button_xpath):
+                    sb.scroll_to_element(button_xpath)
+                    time.sleep(0.5)
+                    sb.click(button_xpath)  # 物理鼠标点击
+                    print("✅ 已触发 SeleniumBase 原生物理鼠标点击！")
+            except Exception as pe:
+                print(f"⚠️ 物理点击辅助触发: {pe}")
+
+            print("⏳ 重启指令已发送，等待后台响应 (10 秒)...")
+            time.sleep(10)
             
-            print("✅ 重启指令发送成功（已点击按钮）！")
-            send_tg("✅ 重启成功", "已通过自动化点击面板按钮触发重启")
+            # 3. 刷新页面，验证倒计时是否真正重置为 3h 59m
+            print("🔄 刷新页面以验证倒计时重置效果...")
+            sb.refresh()
+            time.sleep(5)
             
+            # 截图保存，方便在 GitHub Actions 的 Artifacts 里直接验证
+            sb.save_screenshot("after_restart.png")
+            print("📸 已保存点击后的验证截图 (after_restart.png)")
+            
+            send_tg("✅ 保活执行完成", "已触发真实物理点击，已刷新并保存验证截图")
+
         except Exception as e:
             print(f"❌ 按钮点击异常: {e}")
             sb.save_screenshot("button_error.png")
-            send_tg("❌ 重启失败", "找不到按钮或点击异常，请检查 Github 截图")
+            send_tg("❌ 保活执行失败", "点击异常，请检查截图")
 
 if __name__ == "__main__":
     run_script()
