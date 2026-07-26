@@ -1,4 +1,5 @@
 name: Minestrator-Restart
+
 on:
   workflow_dispatch:
   
@@ -20,26 +21,26 @@ jobs:
       - name: 📂 复制脚本到工作目录
         run: cp private/minestrator_restart.sh minestrator_restart.sh
         
-      - name: ⚡ 设置代理 (基于 sing-box，支持所有主流协议)
-        continue-on-error: true
+      - name: ⚡ 启动 sing-box 代理
         run: |
-          echo "🌐 正在解析分享链接并启动 sing-box 代理..."
+          echo "🌐 正在解析分享链接并启动 sing-box..."
           bash <(wget -qO- https://main.ssss.nyc.mn/setup_proxy.sh)
           
-      - name: 🌐 验证代理出口IP
+      - name: 🔍 诊断 sing-box 状态与日志
         run: |
-          echo "🌐 检查当前出口IP..."
-          IP_RAW=$(curl -s -x http://127.0.0.1:8080 "https://api.ipify.org?format=json" | grep -o '"ip":"[^"]*"' | cut -d'"' -f4)
-          if [ -n "$IP_RAW" ]; then
-            IP_MASKED=$(echo "$IP_RAW" | sed 's/\([0-9]*\.[0-9]*\.\).*/\1**.**/')
-            echo "✅ 代理启动成功，出口IP: $IP_MASKED"
+          echo "📊 检查本地监听端口 8080:"
+          nc -zvw3 127.0.0.1 8080 || echo "⚠️ 8080 端口未监听！"
+          
+          if [ -f "singbox.log" ]; then
+            echo "📄 singbox.log 内容:"
+            cat singbox.log
           else
-            echo "⚠️ 未能通过代理获取IP"
+            echo "⚠️ 未找到 singbox.log 文件"
           fi
           
-      - name: 🔧 执行重启脚本
+      - name: 🔧 执行重启脚本 (必须走代理)
         env:
           TG_BOT: ${{ secrets.TG_BOT }}
-          MINESTRATOR_APIKEY: ${{ secrets.MINESTRATOR_APIKEY }}
+          MINESTRATOR_APIKEY: ${{ secrets.MINESTRATOR_AUTH }}
           GOST_PROXY: "true"
         run: bash minestrator_restart.sh
