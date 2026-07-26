@@ -1,5 +1,4 @@
 name: Minestrator-Restart
-
 on:
   workflow_dispatch:
   
@@ -8,7 +7,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      NODE_LINK: ${{ secrets.PROXY_NODE }}
+      GOST_PROXY: ${{ secrets.GOST_PROXY }}
       
     steps:
       - name: 📥 拉取私库脚本
@@ -21,25 +20,23 @@ jobs:
       - name: 📂 复制脚本到工作目录
         run: cp private/minestrator_restart.sh minestrator_restart.sh
         
-      - name: ⚡ 启动 sing-box 代理
+      - name: 🛡️ 启动 GOST 代理转发
+        if: ${{ env.GOST_PROXY != '' }}
         run: |
-          echo "🌐 正在解析分享链接并启动 sing-box..."
-          # 确保脚本正确执行并把输出打印出来
-          if [ -z "$NODE_LINK" ]; then
-            echo "❌ 错误：未检测到 PROXY_NODE 密钥！请检查 GitHub Secrets。"
-            exit 1
-          fi
-          bash <(wget -qO- https://main.ssss.nyc.mn/setup_proxy.sh)
+          VERSION=$(curl -s https://api.github.com/repos/ginuerzh/gost/releases/latest | grep '"tag_name"' | cut -d'"' -f4 | tr -d 'v')
+          echo "📦 GOST 版本: $VERSION"
+          wget -q "https://github.com/ginuerzh/gost/releases/download/v${VERSION}/gost_${VERSION}_linux_amd64.tar.gz"
+          tar -xzf "gost_${VERSION}_linux_amd64.tar.gz"
+          chmod +x gost
+          nohup ./gost -L http://:8080 -F "$GOST_PROXY" > gost.log 2>&1 &
+          sleep 3
+          echo "✅ GOST 已启动，测试连通性..."
+          IP_RAW=$(curl -s -x http://127.0.0.1:8080 "https://api.ipify.org?format=json" | grep -o '"ip":"[^"]*"' | cut -d'"' -f4)
+          IP_MASKED=$(echo "$IP_RAW" | sed 's/\([0-9]*\.[0-9]*\.\).*/\1**.**/')
+          echo "$IP_MASKED"
           
-      - name: 🔍 诊断 sing-box 状态与端口
-        run: |
-          echo "📊 检查本地监听端口 8080:"
-          sleep 2
-          netstat -tuln | grep 8080 || ss -tuln | grep 8080 || echo "⚠️ 8080 端口未监听！"
-          
-      - name: 🔧 执行重启脚本 (必须走代理)
+      - name: 🔧 执行重启脚本
         env:
           TG_BOT: ${{ secrets.TG_BOT }}
-          MINESTRATOR_APIKEY: ${{ secrets.MINESTRATOR_AUTH }}
-          GOST_PROXY: "true"
+          MINESTRATOR_APIKEY: ${{ secrets.MINESTRATOR_APIKEY }}
         run: bash minestrator_restart.sh
