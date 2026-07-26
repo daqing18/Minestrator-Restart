@@ -270,13 +270,17 @@ def run_script():
             print("⚠️ 未能精准检测到控制台特征，执行硬等待...")
             time.sleep(20)
             
-        # ── 点击蓝色重启按钮（模拟真实鼠标动作链） ────────
-        print("🔄 寻找并执行物理点击【蓝色重启】按钮...")
+        # ── 点击重启按钮（带 WebSocket 充裕等待 + 确认框自动点击） ────────
+        print("⏳ 等待页面与后台 WebSocket 建立连接 (10 秒)...")
+        time.sleep(10)
+        
+        # 截图 1：点击前的初始状态
+        sb.save_screenshot("1_before_click.png")
+        print("📸 已保存点击前的页面截图 (1_before_click.png)")
+
+        print("🔄 寻找并物理点击蓝色重启按钮...")
         try:
-            # 额外等待，确保服务器状态 WebSocket 已经连通
-            time.sleep(5)
-            
-            # 注入 JS 模拟最完整的真人鼠标动作（不含 return）
+            # 1. 模拟完整 MouseEvent 动作流（无 return 关键字）
             sb.execute_script("""
                 let btns = document.querySelectorAll('button');
                 for (let i = 0; i < btns.length; i++) {
@@ -285,48 +289,57 @@ def run_script():
                     let bg = style.backgroundColor || '';
                     let cls = b.className || '';
                     
-                    // 🚨 严格锁定蓝色按钮！彻底抛弃黄色
+                    // 精准锁定带有 svg 且背景/样式为蓝色的重启按钮
                     if (b.querySelector('svg') && (bg.includes('blue') || bg.includes('rgb(37, 99, 235)') || bg.includes('rgb(59, 130, 246)') || cls.includes('blue') || cls.includes('primary'))) {
                         
-                        // 让浏览器滚动到该按钮
                         b.scrollIntoView({block: 'center'});
                         
-                        // 1. 模拟一整套完整的鼠标动作链，强行唤醒 Vue 事件
-                        ['mouseover', 'mousedown', 'mouseup', 'click'].forEach(evt => {
-                            b.dispatchEvent(new MouseEvent(evt, { bubbles: true, cancelable: true, view: window }));
+                        // 对按钮本身派发全套鼠标事件
+                        ['mouseover', 'mousedown', 'mouseup', 'click'].forEach(evtType => {
+                            b.dispatchEvent(new MouseEvent(evtType, { bubbles: true, cancelable: true, view: window }));
                         });
                         
-                        // 2. 双重保险：对着按钮里面的 SVG 图标再做一遍
+                        // 对内部的 svg 图标也派发全套事件
                         let svg = b.querySelector('svg');
                         if (svg) {
-                            ['mousedown', 'mouseup', 'click'].forEach(evt => {
-                                svg.dispatchEvent(new MouseEvent(evt, { bubbles: true, cancelable: true, view: window }));
+                            ['mousedown', 'mouseup', 'click'].forEach(evtType => {
+                                svg.dispatchEvent(new MouseEvent(evtType, { bubbles: true, cancelable: true, view: window }));
                             });
                         }
-                        
-                        break; // 找到并点完后直接跳出，绝不用 return
+                        break;
                     }
                 }
             """)
-            print("✅ 已通过 JS 模拟完整鼠标动作点击了蓝色按钮！")
+            
+            # 2. 检查是否有弹出的二次确认按钮 (Confirm / Oui / OK) 并点击
+            time.sleep(2)
+            sb.execute_script("""
+                let confirmBtns = document.querySelectorAll('dialog button, .modal button, [role="dialog"] button');
+                for (let cb of confirmBtns) {
+                    if (cb.offsetWidth > 0 && cb.offsetHeight > 0) {
+                        cb.click();
+                    }
+                }
+            """)
 
-            # 🔥 极其重要：留足 15 秒给面板去执行重启流程，别急着刷新
-            print("⏳ 重启指令已发送，等待后台响应与倒计时重置 (15 秒)...")
-            time.sleep(15)
+            print("⏳ 重启指令已发送，等待面板刷新响应 (12 秒)...")
+            time.sleep(12)
             
-            print("🔄 刷新页面以获取最新倒计时...")
+            # 刷新页面获取重置后的倒计时
             sb.refresh()
-            time.sleep(8) # 刷新后再等几秒让 UI 渲染完毕
+            time.sleep(5)
             
-            sb.save_screenshot("after_restart.png")
-            print("📸 已保存点击后的验证截图 (after_restart.png)")
+            # 截图 2：点击并刷新后的状态
+            sb.save_screenshot("2_after_click.png")
+            print("📸 已保存点击后的验证截图 (2_after_click.png)")
             
-            send_tg("✅ 保活执行完成", "已精准点击蓝色重启按钮，请检查截图倒计时")
+            send_tg("✅ 保活执行完成", "已触发重启指令，请在 Artifacts 中对比点击前后截图")
 
         except Exception as e:
-            print(f"❌ 按钮点击异常: {e}")
+            print(f"❌ 点击过程异常: {e}")
             sb.save_screenshot("button_error.png")
-            send_tg("❌ 保活执行失败", "点击异常，请检查截图")
+            send_tg("❌ 保活执行失败", f"点击异常: {e}")
+
 
 if __name__ == "__main__":
     run_script()
