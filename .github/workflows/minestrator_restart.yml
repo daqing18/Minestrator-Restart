@@ -10,30 +10,33 @@ jobs:
       GOST_PROXY: ${{ secrets.GOST_PROXY }}
       
     steps:
-      - name: 📥 拉取本库代码
+      - name: 📥 拉取私库脚本
         uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/Minestrator-Restart-Private
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          path: private
+          
+      - name: 📂 复制脚本到工作目录
+        run: cp private/minestrator_restart.sh minestrator_restart.sh
         
       - name: 🛡️ 启动 GOST 代理转发
         if: ${{ env.GOST_PROXY != '' }}
         run: |
-          echo "🛡️ 使用代理模式"
-          echo "🌐 验证出口IP..."
           VERSION=$(curl -s https://api.github.com/repos/ginuerzh/gost/releases/latest | grep '"tag_name"' | cut -d'"' -f4 | tr -d 'v')
+          echo "📦 GOST 版本: $VERSION"
           wget -q "https://github.com/ginuerzh/gost/releases/download/v${VERSION}/gost_${VERSION}_linux_amd64.tar.gz"
           tar -xzf "gost_${VERSION}_linux_amd64.tar.gz"
           chmod +x gost
           nohup ./gost -L http://:8080 -F "$GOST_PROXY" > gost.log 2>&1 &
           sleep 3
+          echo "✅ GOST 已启动，测试连通性..."
           IP_RAW=$(curl -s -x http://127.0.0.1:8080 "https://api.ipify.org?format=json" | grep -o '"ip":"[^"]*"' | cut -d'"' -f4)
           IP_MASKED=$(echo "$IP_RAW" | sed 's/\([0-9]*\.[0-9]*\.\).*/\1**.**/')
-          echo "✅ 出口IP确认：$IP_MASKED"
+          echo "$IP_MASKED"
           
-      - name: 🔧 执行 API 重启脚本
+      - name: 🔧 执行重启脚本
         env:
           TG_BOT: ${{ secrets.TG_BOT }}
-          # 确保这俩 Secrets 在 GitHub 仓库设置里已经填好
-          MINESTRATOR_APIKEY: ${{ secrets.MINESTRATOR_AUTH }} 
-          SERVER_ID: ${{ secrets.MINESTRATOR_SERVER_ID }}
-        run: |
-          chmod +x minestrator_restart.sh
-          bash minestrator_restart.sh
+          MINESTRATOR_APIKEY: ${{ secrets.MINESTRATOR_APIKEY }}
+        run: bash minestrator_restart.sh
