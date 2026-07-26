@@ -223,24 +223,23 @@ def run_script():
 
         print("📤 提交登录请求...")
         try:
-            # 终极杀招：直接在密码框内模拟按下回车键（Enter），最符合真人习惯，能绕过几乎所有前端按钮失效问题
+            # 绝招 1：在密码框里直接发送“回车键 (\n)”，触发表单的原生提交（最稳妥！）
             sb.press_keys("input[type='password']", "\n")
-            time.sleep(2) # 稍微多等两秒，给网络请求留出时间
+            time.sleep(2)
             
-            # 兜底保险：如果回车没生效，用原生 JS 暴力点击所有带“Se connecter”文字的元素
+            # 绝招 2：备用兜底，万一回车没生效，用 JS 原生冒泡事件强行点那颗绿色的按钮
             sb.execute_script("""
-                let tags = document.querySelectorAll('*');
-                for(let t of tags) {
-                    if(t.textContent && t.textContent.trim() === 'Se connecter') {
-                        t.click();
+                let btns = document.querySelectorAll('button');
+                for (let i = 0; i < btns.length; i++) {
+                    let b = btns[i];
+                    if (b.innerText.includes('Se connecter') || b.type === 'submit') {
+                        b.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
                         break;
                     }
                 }
             """)
         except Exception as e:
-            print(f"❌ 登录按钮提交异常: {e}")
-            sb.save_screenshot("login_submit_fail.png")
-            return
+            print(f"⚠️ 登录提交辅助触发异常 (不影响大局): {e}")
 
         print("⏳ 等待登录跳转...")
         for _ in range(40):
