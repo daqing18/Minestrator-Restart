@@ -1,10 +1,7 @@
 name: Minestrator-Restart
 
 on:
-  workflow_dispatch:
-  schedule:
-    # 如果需要北京时间 0:00, 4:00, 8:00, 12:00, 16:00, 20:00，改为：
-    #- cron: '0 16,20,0,4,8,12 * * *'
+  workflow_dispatch: # 👈 核心：允许由 cron-job.org 通过 API 远程触发或在 Actions 页面手动点击
 
 jobs:
   run_minestrator_restart:
@@ -51,7 +48,6 @@ jobs:
           PYTHONIOENCODING: utf-8
           MINESTRATOR_ACCOUNT: ${{ secrets.MINESTRATOR_ACCOUNT }}
           MINESTRATOR_SERVER_ID: ${{ secrets.MINESTRATOR_SERVER_ID }}
-          MINESTRATOR_AUTH: ${{ secrets.MINESTRATOR_AUTH }}
           GOST_PROXY: ${{ secrets.GOST_PROXY }}
           TG_BOT: ${{ secrets.TG_BOT }}
         run: |
