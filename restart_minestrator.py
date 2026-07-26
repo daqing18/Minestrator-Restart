@@ -198,15 +198,21 @@ def run_script():
 
         print("✏️ 填写账号密码...")
         try:
-            sb.wait_for_element_visible("input[name='pseudo']", timeout=20)
-            sb.type("input[name='pseudo']", EMAIL)
-            sb.type("input[name='password']", PASSWORD)
+            # 兼容法文占位符、通用文本框和旧版 pseudo
+            account_selector = 'input[placeholder="Nom d\'utilisateur"], input[type="email"], input[type="text"], input[name="pseudo"]'
+            sb.wait_for_element_visible(account_selector, timeout=20)
+            sb.type(account_selector, EMAIL)
+            
+            # 兼容法文密码占位符和通用密码框
+            password_selector = 'input[placeholder="Mot de passe"], input[type="password"]'
+            sb.type(password_selector, PASSWORD)
+            
             try:
-                sb.execute_script(
-                    "var r=document.querySelector('#remember'); if(r) r.checked=true;"
-                )
+                # 兼容法文的 "Se souvenir de moi" (记住我) 打勾
+                sb.execute_script("var r=document.querySelector('input[type=\"checkbox\"]'); if(r) r.checked=true;")
             except Exception:
                 pass
+
         except Exception:
             print("❌ 登录框加载失败")
             sb.save_screenshot("login_fail.png")
