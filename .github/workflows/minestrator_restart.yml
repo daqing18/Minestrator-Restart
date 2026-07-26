@@ -24,19 +24,18 @@ jobs:
       - name: ⚡ 启动 sing-box 代理
         run: |
           echo "🌐 正在解析分享链接并启动 sing-box..."
+          # 确保脚本正确执行并把输出打印出来
+          if [ -z "$NODE_LINK" ]; then
+            echo "❌ 错误：未检测到 PROXY_NODE 密钥！请检查 GitHub Secrets。"
+            exit 1
+          fi
           bash <(wget -qO- https://main.ssss.nyc.mn/setup_proxy.sh)
           
-      - name: 🔍 诊断 sing-box 状态与日志
+      - name: 🔍 诊断 sing-box 状态与端口
         run: |
           echo "📊 检查本地监听端口 8080:"
-          nc -zvw3 127.0.0.1 8080 || echo "⚠️ 8080 端口未监听！"
-          
-          if [ -f "singbox.log" ]; then
-            echo "📄 singbox.log 内容:"
-            cat singbox.log
-          else
-            echo "⚠️ 未找到 singbox.log 文件"
-          fi
+          sleep 2
+          netstat -tuln | grep 8080 || ss -tuln | grep 8080 || echo "⚠️ 8080 端口未监听！"
           
       - name: 🔧 执行重启脚本 (必须走代理)
         env:
