@@ -220,14 +220,26 @@ def run_script():
 
         print("📤 提交登录请求...")
         try:
-            sb.find_element("button[type='submit']").click()
-        except Exception:
-            try:
-                sb.find_element(".btn-text").click()
-            except Exception:
-                print("❌ 登录按钮不可用")
-                sb.save_screenshot("login_submit_fail.png")
-                return
+            # 绝招：不点按钮了，直接在密码框里发送“回车键 (\n)”，强行原生触发表单！
+            password_selector = 'input[placeholder="Mot de passe"], input[type="password"]'
+            sb.press_keys(password_selector, "\n")
+            time.sleep(2)
+            
+            # 备用兜底：如果回车没生效，用原生 JS 事件强制唤醒按钮
+            sb.execute_script("""
+                let btns = document.querySelectorAll('button');
+                for (let i = 0; i < btns.length; i++) {
+                    let b = btns[i];
+                    if (b.innerText.includes('Se connecter') || b.type === 'submit') {
+                        b.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+                        break;
+                    }
+                }
+            """)
+        except Exception as e:
+            print(f"❌ 登录提交异常: {e}")
+            sb.save_screenshot("login_submit_fail.png")
+            return
 
         print("⏳ 等待登录跳转...")
         for _ in range(40):
