@@ -271,52 +271,53 @@ def run_script():
             time.sleep(20)
             
         # ── 点击重启按钮（真实鼠标点击 + MouseEvent 双重保障） ────────
-        print("🔄 寻找并执行真实物理点击蓝色【重启】按钮...")
+        print("🔄 寻找并执行真实物理点击【重启/唤醒】按钮...")
         try:
-            # 1. 派发完整的 MouseEvent 冒泡事件，强行唤醒 Vue/React 事件监听器
-            js_clicked = sb.execute_script("""
-                return (function() {
-                    let btns = document.querySelectorAll('button');
-                    for (let i = 0; i < btns.length; i++) {
-                        let b = btns[i];
-                        let style = window.getComputedStyle(b);
-                        // 匹配蓝色且带有 svg 的按钮
-                        if (b.querySelector('svg') && (style.backgroundColor.includes('blue') || style.backgroundColor.includes('rgb(37, 99, 235)') || style.backgroundColor.includes('rgb(59, 130, 246)'))) {
-                            // 构造并派发真实的 MouseEvent 冒泡事件
-                            let mouseEvt = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
-                            b.dispatchEvent(mouseEvt);
-                            
-                            // 同时对内部的 svg 也触发一次，双重保险
-                            let svg = b.querySelector('svg');
-                            if (svg) svg.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-                            return true;
-                        }
+            # 1. 派发完整的 MouseEvent 冒泡事件 (彻底移除了引起报错的 return 关键字！)
+            sb.execute_script("""
+                let btns = document.querySelectorAll('button');
+                for (let i = 0; i < btns.length; i++) {
+                    let b = btns[i];
+                    let style = window.getComputedStyle(b);
+                    let bg = style.backgroundColor || '';
+                    
+                    // 匹配蓝色(唤醒/刷新) 或者是 黄色/橙色(强制重启) 的控制按钮
+                    if (b.querySelector('svg') && (bg.includes('blue') || bg.includes('rgb(37, 99, 235)') || bg.includes('rgb(59, 130, 246)') || bg.includes('yellow') || bg.includes('orange') || bg.includes('amber'))) {
+                        
+                        // 构造并派发真实的 MouseEvent 冒泡事件，强行唤醒 Vue
+                        let mouseEvt = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
+                        b.dispatchEvent(mouseEvt);
+                        
+                        // 对里面的 svg 图标也点一次，双重保险
+                        let svg = b.querySelector('svg');
+                        if (svg) svg.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+                        
+                        break; // 触发一次后直接跳出循环，绝不用 return
                     }
-                    return false;
-                })();
+                }
             """)
 
-            # 2. 结合 SeleniumBase 原生物理点击 (模拟真实鼠标光标移动 + Hover + 物理按下)
+            # 2. 结合 SeleniumBase 原生光标物理点击
             try:
-                # 匹配面板上的蓝色按钮或第一个图标按钮
-                button_xpath = "//button[contains(@class,'blue') or contains(@class,'primary') or .//svg][1]"
+                # 匹配面板上的操作按钮
+                button_xpath = "//button[contains(@class,'blue') or contains(@class,'primary') or contains(@class,'yellow') or contains(@class,'orange') or .//svg][1]"
                 if sb.is_element_visible(button_xpath):
                     sb.scroll_to_element(button_xpath)
                     time.sleep(0.5)
-                    sb.click(button_xpath)  # 物理鼠标点击
+                    sb.click(button_xpath)
                     print("✅ 已触发 SeleniumBase 原生物理鼠标点击！")
             except Exception as pe:
-                print(f"⚠️ 物理点击辅助触发: {pe}")
+                print(f"⚠️ 物理点击辅助触发(可忽略): {pe}")
 
             print("⏳ 重启指令已发送，等待后台响应 (10 秒)...")
             time.sleep(10)
             
-            # 3. 刷新页面，验证倒计时是否真正重置为 3h 59m
+            # 3. 刷新页面，让新的倒计时显示出来
             print("🔄 刷新页面以验证倒计时重置效果...")
             sb.refresh()
             time.sleep(5)
             
-            # 截图保存，方便在 GitHub Actions 的 Artifacts 里直接验证
+            # 保存验证截图，去 Actions 的 Artifacts 里下载它就能看到是否重置成功
             sb.save_screenshot("after_restart.png")
             print("📸 已保存点击后的验证截图 (after_restart.png)")
             
