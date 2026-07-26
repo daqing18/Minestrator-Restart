@@ -198,22 +198,13 @@ def run_script():
 
         print("✏️ 填写账号密码...")
         try:
-            sb.wait_for_element_visible("input[type='text']", timeout=20)
-            
-            # 正常填写内容
-            sb.type("input[type='text']", EMAIL)
-            sb.type("input[type='password']", PASSWORD)
-            
-            # 🔥 关键修复点：强制触发原生 input 事件，唤醒 Vue/React 框架的状态同步
-            sb.execute_script("""
-                var ev = new Event('input', { bubbles: true });
-                document.querySelector("input[type='text']").dispatchEvent(ev);
-                document.querySelector("input[type='password']").dispatchEvent(ev);
-            """)
-            time.sleep(1) # 给前端框架 1 秒钟处理状态
-            
+            sb.wait_for_element_visible("input[name='pseudo']", timeout=20)
+            sb.type("input[name='pseudo']", EMAIL)
+            sb.type("input[name='password']", PASSWORD)
             try:
-                sb.execute_script("var r=document.querySelector('input[type=\"checkbox\"]'); if(r) r.checked=true;")
+                sb.execute_script(
+                    "var r=document.querySelector('#remember'); if(r) r.checked=true;"
+                )
             except Exception:
                 pass
         except Exception:
@@ -223,23 +214,14 @@ def run_script():
 
         print("📤 提交登录请求...")
         try:
-            # 绝招 1：在密码框里直接发送“回车键 (\n)”，触发表单的原生提交（最稳妥！）
-            sb.press_keys("input[type='password']", "\n")
-            time.sleep(2)
-            
-            # 绝招 2：备用兜底，万一回车没生效，用 JS 原生冒泡事件强行点那颗绿色的按钮
-            sb.execute_script("""
-                let btns = document.querySelectorAll('button');
-                for (let i = 0; i < btns.length; i++) {
-                    let b = btns[i];
-                    if (b.innerText.includes('Se connecter') || b.type === 'submit') {
-                        b.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-                        break;
-                    }
-                }
-            """)
-        except Exception as e:
-            print(f"⚠️ 登录提交辅助触发异常 (不影响大局): {e}")
+            sb.find_element("button[type='submit']").click()
+        except Exception:
+            try:
+                sb.find_element(".btn-text").click()
+            except Exception:
+                print("❌ 登录按钮不可用")
+                sb.save_screenshot("login_submit_fail.png")
+                return
 
         print("⏳ 等待登录跳转...")
         for _ in range(40):
@@ -258,87 +240,48 @@ def run_script():
         # ── 跳转服务器管理页 ──────────────────────────────────
         print(f"🔃 跳转至服务器管理页：{SERVER_URL}")
         sb.open(SERVER_URL)
-        
-        # ── 等待面板加载完成 ──────────────────────────────────
-        print("⏳ 等待服务器面板加载 (约需 15 秒)...")
-        # 页面会有加载圈 (image_7)，我们等待终端控制台或状态字样出现 (image_8)
+        time.sleep(3)
+        print(f"📄 当前页面：{sb.get_current_url()}")
+        sb.save_screenshot("server_page.png")
+
+        # ── 注入监听器 ────────────────────────────────────────
+        inject_listener(sb)
+
+        # ── 等待 Token ────────────────────────────────────────
+        token = wait_for_token(sb, timeout=60)
+        if not token:
+            sb.save_screenshot("token_timeout.png")
+            send_tg("❌ Token 获取超时", "Turnstile 未能自动完成")
+            return
+
+        # ── 发送重启指令 ──────────────────────────────────────
+        if not send_restart(sb, token):
+            sb.save_screenshot("api_fail.png")
+            send_tg("❌ API 重启请求失败", f"Token长度={len(token)}")
+            return
+
+        # ── 刷新页面，等待剩余时间更新 ──────────────────────
+        print("🔄 刷新页面等待利用期限更新...")
+        time.sleep(5)
+        sb.open(SERVER_URL)
+        time.sleep(5)
         try:
-            sb.wait_for_element_visible("div.font-mono, #console, .terminal, button", timeout=30)
-            print("✅ 面板 UI 加载成功！")
-            time.sleep(5) # 额外缓冲 5 秒，确保按钮完全渲染并绑定了点击事件
+            remaining = sb.execute_script(r"""
+                (function(){
+                    var spans = document.querySelectorAll('[data-slot="base"] span');
+                    var parts = [];
+                    for (var i = 0; i < spans.length; i++) {
+                        var t = spans[i].textContent.trim();
+                        if (/^\d+[hms]$/.test(t)) parts.push(t);
+                    }
+                    return parts.length ? parts.join(' ') : '';
+                })()
+            """)
+            detail = f"⏰ 利用期限：{remaining}" if remaining else "⏰ 利用期限：获取失败"
         except Exception:
-            print("⚠️ 未能精准检测到控制台特征，执行硬等待...")
-            time.sleep(20)
-            
-        # ── 点击重启按钮（带 WebSocket 充裕等待 + 确认框自动点击） ────────
-        print("⏳ 等待页面与后台 WebSocket 建立连接 (10 秒)...")
-        time.sleep(10)
-        
-        # 截图 1：点击前的初始状态
-        sb.save_screenshot("1_before_click.png")
-        print("📸 已保存点击前的页面截图 (1_before_click.png)")
-
-        print("🔄 寻找并物理点击蓝色重启按钮...")
-        try:
-            # 1. 模拟完整 MouseEvent 动作流（无 return 关键字）
-            sb.execute_script("""
-                let btns = document.querySelectorAll('button');
-                for (let i = 0; i < btns.length; i++) {
-                    let b = btns[i];
-                    let style = window.getComputedStyle(b);
-                    let bg = style.backgroundColor || '';
-                    let cls = b.className || '';
-                    
-                    // 精准锁定带有 svg 且背景/样式为蓝色的重启按钮
-                    if (b.querySelector('svg') && (bg.includes('blue') || bg.includes('rgb(37, 99, 235)') || bg.includes('rgb(59, 130, 246)') || cls.includes('blue') || cls.includes('primary'))) {
-                        
-                        b.scrollIntoView({block: 'center'});
-                        
-                        // 对按钮本身派发全套鼠标事件
-                        ['mouseover', 'mousedown', 'mouseup', 'click'].forEach(evtType => {
-                            b.dispatchEvent(new MouseEvent(evtType, { bubbles: true, cancelable: true, view: window }));
-                        });
-                        
-                        // 对内部的 svg 图标也派发全套事件
-                        let svg = b.querySelector('svg');
-                        if (svg) {
-                            ['mousedown', 'mouseup', 'click'].forEach(evtType => {
-                                svg.dispatchEvent(new MouseEvent(evtType, { bubbles: true, cancelable: true, view: window }));
-                            });
-                        }
-                        break;
-                    }
-                }
-            """)
-            
-            # 2. 检查是否有弹出的二次确认按钮 (Confirm / Oui / OK) 并点击
-            time.sleep(2)
-            sb.execute_script("""
-                let confirmBtns = document.querySelectorAll('dialog button, .modal button, [role="dialog"] button');
-                for (let cb of confirmBtns) {
-                    if (cb.offsetWidth > 0 && cb.offsetHeight > 0) {
-                        cb.click();
-                    }
-                }
-            """)
-
-            print("⏳ 重启指令已发送，等待面板刷新响应 (12 秒)...")
-            time.sleep(12)
-            
-            # 刷新页面获取重置后的倒计时
-            sb.refresh()
-            time.sleep(5)
-            
-            # 截图 2：点击并刷新后的状态
-            sb.save_screenshot("2_after_click.png")
-            print("📸 已保存点击后的验证截图 (2_after_click.png)")
-            
-            send_tg("✅ 保活执行完成", "已触发重启指令，请在 Artifacts 中对比点击前后截图")
-
-        except Exception as e:
-            print(f"❌ 点击过程异常: {e}")
-            sb.save_screenshot("button_error.png")
-            send_tg("❌ 保活执行失败", f"点击异常: {e}")
+            detail = "利用期限：获取失败"
+        print(f"⏱️ {detail}")
+        send_tg("✅ 重启成功！", detail)
 
 
 if __name__ == "__main__":
