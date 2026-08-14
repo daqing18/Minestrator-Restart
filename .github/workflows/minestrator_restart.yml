@@ -47,13 +47,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          RUNS=$(gh run list --workflow="${{ github.workflow }}" --limit=100 --json databaseId --jq '.[].databaseId')
+          RUNS=$(gh run list --repo "${{ github.repository }}" --workflow="Minestrator-Restart" --limit=100 --json databaseId --jq '.[].databaseId')
           COUNT=0
           for RUN_ID in $RUNS; do
             COUNT=$((COUNT + 1))
             if [ $COUNT -gt 1 ]; then
               echo "删除运行记录: $RUN_ID"
-              gh run delete "$RUN_ID"
+              gh run delete --repo "${{ github.repository }}" "$RUN_ID"
               sleep 0.5
             fi
           done
