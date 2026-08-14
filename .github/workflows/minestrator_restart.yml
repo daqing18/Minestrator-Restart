@@ -1,14 +1,18 @@
 name: Minestrator-Restart
 on:
   workflow_dispatch:
-  
+
+permissions:
+  contents: read
+  actions: write
+
 jobs:
   start:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
       NODE_LINK: ${{ secrets.NODE_LINK }}
-      
+
     steps:
       - name: 📥 拉取私库脚本
         uses: actions/checkout@v4
@@ -16,20 +20,20 @@ jobs:
           repository: ${{ github.repository_owner }}/Minestrator-Restart-Private
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           path: private
-          
+
       - name: 📂 复制脚本到工作目录
         run: cp private/minestrator_restart.sh minestrator_restart.sh
-        
+
       - name: 🌐 设置代理 (sing-box)
         if: ${{ env.NODE_LINK != '' }}
         run: |
           bash <(wget -qO- https://main.ssss.nyc.mn/setup_proxy.sh)
-          
+
       - name: 🔧 执行重启脚本
         env:
           TG_BOT: ${{ secrets.TG_BOT }}
           MINESTRATOR_APIKEY: ${{ secrets.MINESTRATOR_APIKEY }}
-          PROXY_SERVER: ${{ env.PROXY_SERVER }} # 接收 setup_proxy.sh 导出的代理地址
+          PROXY_SERVER: ${{ env.PROXY_SERVER }}
         run: bash minestrator_restart.sh
 
       - name: 🧽 清理代理进程和临时文件
@@ -37,3 +41,20 @@ jobs:
         run: |
           pkill -f sing-box || true
           rm -f sing-box sing-box-config.json sing-box.log
+
+      - name: 🧹 清理旧的工作流运行记录
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RUNS=$(gh run list --workflow="${{ github.workflow }}" --limit=100 --json databaseId --jq '.[].databaseId')
+          COUNT=0
+          for RUN_ID in $RUNS; do
+            COUNT=$((COUNT + 1))
+            if [ $COUNT -gt 1 ]; then
+              echo "删除运行记录: $RUN_ID"
+              gh run delete "$RUN_ID"
+              sleep 0.5
+            fi
+          done
+          echo "共处理 ${COUNT} 条记录，保留最新 1 条"
